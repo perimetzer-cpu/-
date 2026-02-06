@@ -25,6 +25,16 @@ export interface Signer {
   phone: string;
   order: number;
   hasSigned: boolean;
+  signedAt?: Date;
+  uniqueLink?: string; // לינק ייחודי לחותם
+}
+
+export interface Contact {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone: string;
 }
 
 export interface DocumentField {
@@ -36,7 +46,7 @@ export interface DocumentField {
   y: number;
   required: boolean;
   value?: string;
-  signerId: string;
+  signerId: string; // קישור לחותם ספציפי
 }
 
 export interface SmartDocument {

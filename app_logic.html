@@ -53,7 +53,7 @@ const PDFViewer = ({ fileUrl, children }) => {
 
   return (
     <div className="relative w-full flex flex-col items-center pdf-canvas-container">
-      {loading && <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-50 rounded-xl">טוען מסמך...</div>}
+      {loading && <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-50 rounded-xl font-bold text-blue-600">טוען מסמך...</div>}
       <div ref={containerRef} className="relative z-0 w-full"></div>
       {!loading && <div className="absolute inset-0 z-10 pointer-events-none">{children}</div>}
     </div>
@@ -125,7 +125,6 @@ const DocumentEditor = ({ document: initialDoc, onSave, onCancel }) => {
 const ShareModal = ({ document: docObj, onClose }) => {
   const [copied, setCopied] = useState(false);
   
-  // שימוש בכתובת הציבורית שהזרקנו ב-index.html
   const getSigningLink = () => {
      const baseUrl = window.BASE_APP_URL || "";
      return `${baseUrl}?sign=${docObj.id}`;
@@ -137,7 +136,6 @@ const ShareModal = ({ document: docObj, onClose }) => {
       setCopied(true); 
       setTimeout(() => setCopied(false), 2000); 
     }).catch(() => {
-      // Fallback אם ה-Clipboard API חסום
       const el = document.createElement('textarea');
       el.value = link;
       document.body.appendChild(el);
@@ -191,16 +189,50 @@ const ShareModal = ({ document: docObj, onClose }) => {
 const SignerInterface = ({ document: docObj, onComplete }) => {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState({});
+  const [isSending, setIsSending] = useState(false);
   const currentField = docObj.fields[step];
 
   const handleSign = () => {
-    setValues({ ...values, [currentField.id]: 'SIGNED' });
-    if (step < docObj.fields.length - 1) setStep(step + 1);
-    else onComplete();
+    const nextValues = { ...values, [currentField.id]: 'SIGNED' };
+    setValues(nextValues);
+    
+    if (step < docObj.fields.length - 1) {
+      setStep(step + 1);
+    } else {
+      setIsSending(true);
+      // קריאה לפונקציית השרת לשליחת אימייל
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(() => {
+            setIsSending(false);
+            onComplete();
+          })
+          .withFailureHandler((err) => {
+            console.error("Email send failed", err);
+            setIsSending(false);
+            onComplete(); // עדיין משלימים את החתימה בממשק גם אם המייל נכשל
+          })
+          .sendSignedDocumentNotification(docObj.title, docObj.signers[0].name);
+      } else {
+        // Fallback למקרה של סביבת פיתוח מקומית
+        setTimeout(() => {
+            setIsSending(false);
+            onComplete();
+        }, 1000);
+      }
+    }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-700">
+      {isSending && (
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm z-[200] flex flex-col items-center justify-center">
+            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h2 className="text-2xl font-bold text-slate-800">שולח עותק חתום...</h2>
+            <p className="text-slate-500 mt-2">נא לא לסגור את הדף, אנו שולחים עותק ל-peri@bettylaw.co.il</p>
+        </div>
+      )}
+
       <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><ICONS.Logo className="w-7 h-7" /></div>
@@ -235,7 +267,7 @@ const SignerInterface = ({ document: docObj, onComplete }) => {
              </div>
              <p className="text-[11px] text-slate-400 leading-relaxed font-bold">לחץ על התיבה הכחולה המהבהבת כדי לחתום ולעבור לשלב הבא.</p>
            </div>
-           <button onClick={handleSign} className="w-full py-5 bg-blue-600 text-white font-bold rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95">אשר וחתום</button>
+           <button onClick={handleSign} disabled={isSending} className={`w-full py-5 bg-blue-600 text-white font-bold rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}>אשר וחתום</button>
         </div>
       </div>
     </div>
@@ -251,11 +283,9 @@ const App = () => {
   const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
-    // טעינת מסמכים מ-LocalStorage
     const saved = localStorage.getItem('signsmart_docs');
     if (saved) setDocuments(JSON.parse(saved));
     
-    // בדיקה אם המשתמש הגיע דרך קישור חתימה
     const params = new URLSearchParams(window.location.search);
     const signId = params.get('sign');
     if (signId) {
@@ -340,7 +370,7 @@ const App = () => {
           </div>
         )}
         {view === 'editor' && currentDoc && <DocumentEditor document={currentDoc} onCancel={() => setView('dashboard')} onSave={(d) => { setDocuments(docs => docs.map(doc => doc.id === d.id ? { ...d, status: 'IN_PROGRESS' } : doc)); setView('dashboard'); setShowShare(true); }} />}
-        {view === 'signing' && currentDoc && <SignerInterface document={currentDoc} onComplete={() => { setDocuments(docs => docs.map(d => d.id === selectedId ? { ...d, status: 'COMPLETED' } : d)); setView('dashboard'); alert('המסמך נחתם בהצלחה!'); }} />}
+        {view === 'signing' && currentDoc && <SignerInterface document={currentDoc} onComplete={() => { setDocuments(docs => docs.map(d => d.id === selectedId ? { ...d, status: 'COMPLETED' } : d)); setView('dashboard'); alert('המסמך נחתם בהצלחה והודעה נשלחה למשרד!'); }} />}
       </main>
       {showShare && currentDoc && <ShareModal document={currentDoc} onClose={() => setShowShare(false)} />}
     </div>

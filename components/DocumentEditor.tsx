@@ -12,17 +12,10 @@ interface DocumentEditorProps {
 
 const DocumentEditor: React.FC<DocumentEditorProps> = ({ document: initialDoc, onSave, onCancel }) => {
   const [doc, setDoc] = useState<SmartDocument>(initialDoc);
-  const [activeTab, setActiveTab] = useState<'fields' | 'signers' | 'settings'>('fields');
-  const [draggedFieldType, setDraggedFieldType] = useState<FieldType | null>(null);
+  const [activeTab, setActiveTab] = useState<'signers' | 'fields' | 'settings'>('signers');
   const [movingFieldId, setMovingFieldId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const fileType = useMemo(() => {
-    const ext = doc.fileName?.toLowerCase().split('.').pop();
-    if (ext === 'pdf') return 'pdf';
-    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext || '')) return 'image';
-    return 'other';
-  }, [doc.fileName]);
 
   const addSigner = () => {
     const newSigner: Signer = {
@@ -34,19 +27,16 @@ const DocumentEditor: React.FC<DocumentEditorProps> = ({ document: initialDoc, o
     setDoc({ ...doc, signers: [...doc.signers, newSigner] });
   };
 
-  const updateSigner = (id: string, updates: Partial<Signer>) => {
-    setDoc({ ...doc, signers: doc.signers.map(s => s.id === id ? { ...s, ...updates } : s) });
-  };
-
   const addField = (x: number, y: number, type: FieldType) => {
     if (doc.signers.length === 0) {
-      alert('יש להוסיף לפחות חותם אחד לפני הוספת שדות');
+      alert('נא להוסיף לפחות חותם אחד לפני הוספת שדות');
+      setActiveTab('signers');
       return;
     }
     const newField: DocumentField = {
       id: Math.random().toString(36).substr(2, 5),
       type, label: getLabel(type),
-      page: 1, x, y, required: true,
+      page: currentPage, x, y, required: true,
       signerId: doc.signers[0].id
     };
     setDoc({ ...doc, fields: [...doc.fields, newField] });
@@ -58,219 +48,124 @@ const DocumentEditor: React.FC<DocumentEditorProps> = ({ document: initialDoc, o
       case FieldType.INITIALS: return 'ראשי תיבות';
       case FieldType.DATE: return 'תאריך';
       case FieldType.ID_NUMBER: return 'ת.ז.';
-      case FieldType.ADDRESS: return 'כתובת';
-      case FieldType.AMOUNT: return 'סכום';
-      case FieldType.CHECKBOX: return 'אישור תנאים';
       default: return 'שדה';
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!movingFieldId || !containerRef.current) return;
-
     const rect = containerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top - 44) / (rect.height - 44)) * 100));
     setDoc(prev => ({
       ...prev,
       fields: prev.fields.map(f => f.id === movingFieldId ? { ...f, x, y } : f)
     }));
   };
 
-  const handleMouseUp = () => {
-    setMovingFieldId(null);
-  };
-
-  // Ensure move ends even if mouse leaves the document area
-  useEffect(() => {
-    if (movingFieldId) {
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => window.removeEventListener('mouseup', handleMouseUp);
-    }
-  }, [movingFieldId]);
-
-  const fieldTemplates = [
-    { type: FieldType.SIGNATURE, label: 'חתימה', icon: <ICONS.Check className="w-4 h-4" /> },
-    { type: FieldType.INITIALS, label: 'ראשי תיבות', icon: <span className="text-[10px] font-bold">RT</span> },
-    { type: FieldType.DATE, label: 'תאריך', icon: <ICONS.Plus className="w-4 h-4 rotate-45" /> },
-    { type: FieldType.ID_NUMBER, label: 'ת.ז.', icon: <ICONS.Logo className="w-4 h-4" /> },
-    { type: FieldType.ADDRESS, label: 'כתובת', icon: <ICONS.Plus className="w-4 h-4" /> },
-    { type: FieldType.AMOUNT, label: 'סכום', icon: <span className="font-bold">₪</span> },
-    { type: FieldType.CHECKBOX, label: 'צ\'קבוקס', icon: <div className="w-3 h-3 border-2 border-slate-400"></div> },
-  ];
-
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] animate-in fade-in duration-500">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between mb-4 bg-white p-4 rounded-2xl border shadow-sm">
-        <div className="flex items-center gap-4">
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 font-bold px-4 transition-colors">ביטול</button>
-          <div className="h-8 w-px bg-slate-100"></div>
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden animate-slide-up" onMouseMove={handleMouseMove} onMouseUp={() => setMovingFieldId(null)}>
+      {/* Editor Header */}
+      <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+        <div className="flex items-center gap-6">
+          <button onClick={onCancel} className="text-slate-400 font-black hover:text-slate-800 transition-colors uppercase text-xs tracking-widest">ביטול</button>
+          <div className="h-8 w-px bg-slate-200"></div>
           <div className="flex flex-col">
             <input 
               type="text" 
               value={doc.title}
               onChange={(e) => setDoc({ ...doc, title: e.target.value })}
-              className="text-lg font-bold bg-transparent border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none px-2 py-0.5 min-w-[250px]"
+              className="text-xl font-black bg-transparent border-none outline-none focus:ring-2 focus:ring-blue-100 rounded-lg px-2 text-slate-800"
             />
-            <span className="text-[10px] text-slate-400 font-bold px-2 flex items-center gap-1">
-              <ICONS.File className="w-3 h-3" /> {doc.fileName}
-            </span>
           </div>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => onSave({ ...doc, status: DocumentStatus.IN_PROGRESS })}
-            className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
-          >
-            סיום ושליחה
-          </button>
-        </div>
+        <button onClick={() => onSave(doc)} className="bg-blue-600 text-white px-10 py-3.5 rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95">שמור ושגר מסמך</button>
       </div>
 
-      <div className="flex gap-4 flex-grow overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-72 bg-white rounded-2xl border shadow-sm flex flex-col overflow-hidden">
-          <div className="flex border-b bg-slate-50/50">
-            {['fields', 'signers', 'settings'].map((tab) => (
+      <div className="flex flex-grow overflow-hidden">
+        {/* Editor Sidebar */}
+        <div className="w-80 bg-white border-l flex flex-col shadow-sm">
+          <div className="flex border-b">
+            {['signers', 'fields'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
-                className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === tab ? 'border-blue-500 text-blue-600 bg-white' : 'border-transparent text-slate-400'}`}
+                className={`flex-1 py-5 text-[11px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === tab ? 'border-blue-600 text-blue-600 bg-blue-50/10' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
               >
-                {tab === 'fields' ? 'שדות' : tab === 'signers' ? 'חותמים' : 'אוטומציה'}
+                {tab === 'signers' ? 'חותמים' : 'שדות חתימה'}
               </button>
             ))}
           </div>
 
-          <div className="flex-grow overflow-y-auto p-4 custom-scrollbar">
-            {activeTab === 'fields' && (
-              <div className="space-y-4">
-                <p className="text-[10px] font-bold text-slate-400 mb-2 uppercase">גרור למסמך או לחץ להוספה מהירה</p>
-                <div className="grid grid-cols-1 gap-2">
-                  {fieldTemplates.map((template) => (
-                    <div
-                      key={template.type}
-                      className="group flex items-center gap-2 p-1 pr-3 border-2 border-slate-50 rounded-2xl hover:border-blue-100 hover:bg-blue-50 transition-all bg-white"
-                    >
-                      <div 
-                        draggable
-                        onDragStart={() => setDraggedFieldType(template.type)}
-                        className="flex-grow flex items-center gap-3 cursor-move py-2"
-                      >
-                        <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-white text-slate-400 group-hover:text-blue-600 transition-colors shadow-sm">{template.icon}</div>
-                        <span className="text-xs font-bold text-slate-600">{template.label}</span>
-                      </div>
-                      <button 
-                        onClick={() => addField(50, 50, template.type)}
-                        className="p-2 opacity-0 group-hover:opacity-100 bg-blue-600 text-white rounded-xl text-[9px] font-bold shadow-md hover:bg-blue-700 transition-all"
-                        title="הוסף למרכז (50, 50)"
-                      >
-                        מרכז
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar">
             {activeTab === 'signers' && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {doc.signers.map((signer, i) => (
-                  <div key={signer.id} className="p-3 border border-slate-100 rounded-xl bg-slate-50/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">{i+1}</span>
-                      <button onClick={() => setDoc({...doc, signers: doc.signers.filter(s => s.id !== signer.id)})} className="text-slate-300 hover:text-red-500">✕</button>
+                  <div key={signer.id} className="p-5 border border-slate-100 rounded-3xl bg-slate-50/50 space-y-4 group">
+                    <div className="flex items-center justify-between">
+                      <span className="bg-blue-600 text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black">{i+1}</span>
+                      <button onClick={() => setDoc({...doc, signers: doc.signers.filter(s => s.id !== signer.id)})} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">✕</button>
                     </div>
                     <input 
-                      type="text" placeholder="שם החותם" value={signer.name}
-                      onChange={(e) => updateSigner(signer.id, { name: e.target.value })}
-                      className="text-xs font-bold w-full bg-white border p-2 rounded-lg mb-2 outline-none focus:border-blue-300"
+                      type="text" placeholder="שם מלא" value={signer.name}
+                      onChange={(e) => setDoc({...doc, signers: doc.signers.map(s => s.id === signer.id ? { ...s, name: e.target.value } : s)})}
+                      className="w-full bg-white border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100"
                     />
                     <input 
-                      type="email" placeholder="אימייל" value={signer.email}
-                      onChange={(e) => updateSigner(signer.id, { email: e.target.value })}
-                      className="text-[10px] w-full bg-white border p-2 rounded-lg outline-none focus:border-blue-300"
+                      type="text" placeholder="טלפון/מייל" value={signer.phone}
+                      onChange={(e) => setDoc({...doc, signers: doc.signers.map(s => s.id === signer.id ? { ...s, phone: e.target.value } : s)})}
+                      className="w-full bg-white border border-slate-200 p-3 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
                 ))}
-                <button onClick={addSigner} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-xs hover:border-blue-400 hover:text-blue-600 transition-all">+ חותם נוסף</button>
+                <button onClick={addSigner} className="w-full py-5 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-black text-xs hover:border-blue-400 hover:text-blue-600 transition-all uppercase tracking-widest">+ הוסף חותם נוסף</button>
+              </div>
+            )}
+
+            {activeTab === 'fields' && (
+              <div className="space-y-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">לחץ להוספה בעמוד {currentPage}</p>
+                {[FieldType.SIGNATURE, FieldType.INITIALS, FieldType.DATE, FieldType.ID_NUMBER].map(type => (
+                  <button 
+                    key={type} 
+                    onClick={() => addField(50, 50, type)}
+                    className="w-full p-4 border border-slate-100 rounded-2xl text-right font-black text-sm bg-white hover:border-blue-600 hover:bg-blue-50 transition-all shadow-sm flex items-center justify-between"
+                  >
+                    <span>{getLabel(type)}</span>
+                    <span className="text-blue-600 text-xl">+</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Document Area */}
-        <div 
-          className={`flex-grow bg-slate-200 rounded-2xl border shadow-inner overflow-auto flex justify-center p-8 custom-scrollbar ${movingFieldId ? 'cursor-grabbing' : ''}`}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-        >
-          <div 
-            ref={containerRef}
-            className="w-[620px] relative h-fit"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = ((e.clientX - rect.left) / rect.width) * 100;
-              const y = ((e.clientY - rect.top) / rect.height) * 100;
-              if (draggedFieldType) addField(x, y, draggedFieldType);
-              setDraggedFieldType(null);
-            }}
-          >
-            {doc.fileUrl && fileType === 'pdf' ? (
-              <PDFViewer fileUrl={doc.fileUrl}>
-                {/* Fields Overlay within PDFViewer */}
-                {doc.fields.map((field) => (
-                  <div
-                    key={field.id}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      setMovingFieldId(field.id);
-                    }}
+        {/* Editor Main Canvas */}
+        <div className="flex-grow bg-slate-100 p-10 overflow-auto flex justify-center custom-scrollbar shadow-inner">
+           <div ref={containerRef} className="w-[620px] relative h-fit bg-white shadow-2xl rounded-lg">
+              <PDFViewer fileUrl={doc.fileUrl} currentPage={currentPage} onPageChange={setCurrentPage}>
+                {doc.fields.filter(f => f.page === currentPage).map(field => (
+                  <div 
+                    key={field.id} 
+                    onMouseDown={e => { e.stopPropagation(); setMovingFieldId(field.id); }} 
                     style={{ left: `${field.x}%`, top: `${field.y}%`, transform: 'translate(-50%, -50%)' }}
-                    className={`absolute p-2 bg-white/95 border-2 border-blue-600 rounded-xl flex items-center gap-2 shadow-xl z-20 pointer-events-auto transition-transform ${movingFieldId === field.id ? 'scale-110 opacity-70 z-30 cursor-grabbing' : 'hover:scale-105 cursor-grab'}`}
+                    className={`absolute p-3 bg-white/95 border-2 border-blue-600 rounded-2xl flex items-center gap-3 shadow-xl z-20 pointer-events-auto cursor-move select-none transition-transform ${movingFieldId === field.id ? 'scale-110 opacity-70' : 'hover:scale-105'}`}
                   >
-                    <div className="bg-blue-600 p-1.5 rounded-lg text-white shadow-sm">
-                      <ICONS.Check className="w-3.5 h-3.5" />
+                    <div className="flex flex-col text-right">
+                       <select 
+                        className="text-[8px] font-black text-blue-600 bg-blue-50 px-1 py-0.5 rounded outline-none mb-1 border-none"
+                        value={field.signerId}
+                        onChange={e => setDoc({...doc, fields: doc.fields.map(f => f.id === field.id ? { ...f, signerId: e.target.value } : f)})}
+                       >
+                          {doc.signers.map(s => <option key={s.id} value={s.id}>{s.name || 'בחר חותם'}</option>)}
+                       </select>
+                       <div className="text-[10px] font-black text-slate-800">{field.label}</div>
                     </div>
-                    <div className="flex flex-col min-w-[60px] select-none">
-                       <span className="text-[7px] text-blue-500 font-extrabold uppercase tracking-tighter leading-none mb-1">
-                          {doc.signers.find(s => s.id === field.signerId)?.name || 'חותם'}
-                       </span>
-                       <div className="text-[10px] font-extrabold text-blue-900 leading-none">{field.label}</div>
-                    </div>
-                    <button 
-                      onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking delete
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDoc({...doc, fields: doc.fields.filter(f => f.id !== field.id)});
-                      }} 
-                      className="w-5 h-5 bg-slate-100 hover:bg-red-500 hover:text-white rounded-full text-slate-400 flex items-center justify-center text-[8px] transition-colors shadow-sm"
-                    >✕</button>
+                    <button onClick={() => setDoc({ ...doc, fields: doc.fields.filter(f => f.id !== field.id) })} className="text-[10px] text-red-400 hover:bg-red-50 p-1 rounded-full">✕</button>
                   </div>
                 ))}
               </PDFViewer>
-            ) : (
-              <div className="w-full aspect-[1/1.4] bg-white rounded-sm border shadow-md flex items-center justify-center">
-                <p className="text-slate-400 font-bold">טוען מסמך...</p>
-              </div>
-            )}
-
-            {/* Visual Aid Overlay when dragging from side menu */}
-            {draggedFieldType && (
-              <div className="absolute inset-0 z-40 bg-blue-500/10 backdrop-blur-[2px] pointer-events-none flex items-center justify-center border-4 border-blue-500/30 transition-all">
-                <div className="bg-white px-8 py-4 rounded-[30px] shadow-2xl border border-blue-100 flex items-center gap-3 scale-110">
-                  <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white">
-                    <ICONS.Plus className="w-6 h-6" />
-                  </div>
-                  <p className="text-blue-900 font-extrabold text-lg">שחרר למיקום השדה</p>
-                </div>
-              </div>
-            )}
-          </div>
+           </div>
         </div>
       </div>
     </div>
